@@ -1,6 +1,17 @@
 version: '3.8'
 
 services:
+  api:
+    build: ./api
+    ports:
+      - "4200:5000"
+    environment:
+      - DATABASE_URL=postgresql://admin:admin123@db:5432/motorcycle_shop
+    depends_on:
+      - db
+    networks:
+      - motorcycle_network
+
   db:
     image: postgres:15
     container_name: motorcycle_db
@@ -11,7 +22,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
       - pgdata:/var/lib/postgresql/data
     networks:
       - motorcycle_network
