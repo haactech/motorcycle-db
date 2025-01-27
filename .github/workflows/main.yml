@@ -24,54 +24,34 @@ jobs:
         role-to-assume: arn:aws:iam::048916985380:role/GitHubActionsDeployRole
         aws-region: us-east-1 
 
-    - name: Debug secrets
-      run: |
-        if [ -n "${{ secrets.EC2_HOST }}" ]; then
-          echo "EC2_HOST is set"
-        else
-          echo "EC2_HOST is not set"
-        fi
-        
-        if [ -n "${{ secrets.EC2_SSH_KEY }}" ]; then
-          echo "EC2_SSH_KEY is set"
-        else
-          echo "EC2_SSH_KEY is not set"
-        fi
-
     - name: Create SSH config
       run: |
         mkdir -p ~/.ssh
         echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key.pem
         chmod 600 ~/.ssh/deploy_key.pem
-        ls -la ~/.ssh/deploy_key.pem
-        echo "First line of key file:"
-        head -n 1 ~/.ssh/deploy_key.pem
-        echo "Last line of key file:"
-        tail -n 1 ~/.ssh/deploy_key.pem
-        echo "Key file permissions:"
-        ls -la ~/.ssh/deploy_key.pem
-        echo "Key file format:"
-        ssh-keygen -l -f ~/.ssh/deploy_key.pem || echo "Invalid key format"
 
     - name: Test SSH connection
+      env:
+        EC2_HOST: ${{ secrets.EC2_HOST }}
       run: |
-        ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key.pem ec2-user@${{ secrets.EC2_HOST }} 'echo "SSH connection successful"'
+        echo "Testing SSH connection..."
+        ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key.pem ubuntu@$EC2_HOST 'echo "SSH connection successful"'
 
     - name: Deploy to EC2
       env:
         EC2_HOST: ${{ secrets.EC2_HOST }}
       run: |
         # Detener contenedores existentes
-        ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key.pem ec2-user@$EC2_HOST '
+        ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key.pem ubuntu@$EC2_HOST '
           cd ~/motorcycle-shop &&
           docker-compose down
         '
         
         # Copiar archivos nuevos
-        scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key.pem -r ./* ec2-user@$EC2_HOST:~/motorcycle-shop/
+        scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key.pem -r ./* ubuntu@$EC2_HOST:~/motorcycle-shop/
         
         # Reiniciar contenedores
-        ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key.pem ec2-user@$EC2_HOST '
+        ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key.pem ubuntu@$EC2_HOST '
           cd ~/motorcycle-shop &&
           docker-compose build --no-cache &&
           docker-compose up -d
