@@ -207,6 +207,10 @@ def get_clients():
         } for m in c.interests]
     } for c in clients])
 
+@app.route('health',methods=['GET'])
+def health():
+    return jsonify({'helath':'it´s working'}), 200
+
 @app.route('/recommend-branch', methods=['POST'])
 def recommend_branch():
     data = request.json
