@@ -1,0 +1,48 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  id-token: write
+  contents: read 
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    -  uses: actions/checkout@v2
+
+    -  name: Configure AWS Credentials
+       uses: aws-actions/configure-aws-credentials@v2 
+       with:
+         role-to-assume: arn:aws:iam::048916985380:role/GiHubActionsDeployRole
+         aws-region: use-east-1 
+
+    -  name: Create SSH config
+       run: |
+         mkdir -p ~/.ssh
+         echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key.pem
+         chmod 600 ~/.ssh/deploy_key.pem
+
+    - name: Deploy to EC2
+      run: |
+        # Detener contenedores existentes
+        ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key.pem ec2-user@${{ secrets.EC2_HOST }} '
+          cd ~/motorcycle-shop &&
+          docker-compose down
+        '
+        
+        # Copiar archivos nuevos
+        scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key.pem -r ./* ec2-user@${{ secrets.EC2_HOST }}:~/motorcycle-shop/
+        
+        # Reiniciar contenedores
+        ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key.pem ec2-user@${{ secrets.EC2_HOST }} '
+          cd ~/motorcycle-shop &&
+          docker-compose build --no-cache &&
+          docker-compose up -d
+        '
