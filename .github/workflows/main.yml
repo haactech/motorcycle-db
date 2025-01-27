@@ -20,7 +20,7 @@ jobs:
     -  name: Configure AWS Credentials
        uses: aws-actions/configure-aws-credentials@v2 
        with:
-         role-to-assume: arn:aws:iam::048916985380:role/GiHubActionsDeployRole
+         role-to-assume: arn:aws:iam::048916985380:role/GitHubActionsDeployRole
          aws-region: us-east-1 
 
     -  name: Create SSH config
