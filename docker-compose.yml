@@ -19,26 +19,11 @@ services:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin123
       POSTGRES_DB: motorcycle_shop
-    expose:
-      - "5432"
+    ports:
+      - "5432:5432"
     volumes:
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
       - pgdata:/var/lib/postgresql/data
-    networks:
-      - motorcycle_network
-
-  test:
-    build: 
-      context: .
-      dockerfile: Dockerfile.test
-    command: pytest
-    volumes:
-      - .:/app
-    environment:
-      - DATABASE_URL=postgresql://admin:admin123@db:5432/motorcycle_shop
-      - PYTHONPATH=/app
-    depends_on:
-      - db
     networks:
       - motorcycle_network
 
