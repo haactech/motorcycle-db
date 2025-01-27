@@ -1,4 +1,5 @@
-from flask import Flask, jsonify, request
+from flask import Flask, request
+from flask_restx import Api, Resource, fields
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 import os
@@ -6,23 +7,32 @@ import requests
 from datetime import datetime
 
 app = Flask(__name__)
-CORS(app, resources={
-    r"/*": {
-        "origins": "*",
-        "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization"]
-    }
-})
+CORS(app)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
 db = SQLAlchemy(app)
 
-# Models
+# Configuración de Swagger
+api = Api(
+    app,
+    version='1.0',
+    title='Motorcycle Shop API',
+    description='API para gestión de clientes y motocicletas',
+    doc='/docs'
+)
+
+# Namespaces
+ns_branches = api.namespace('branches', description='Operaciones con sucursales')
+ns_motorcycles = api.namespace('motorcycles', description='Operaciones con motocicletas')
+ns_clients = api.namespace('clients', description='Operaciones con clientes')
+ns_recommend = api.namespace('recommend', description='Recomendaciones de sucursales')
+
+# Models de Base de Datos (los mismos que ya tenías)
 class Branch(db.Model):
     __tablename__ = 'branches'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     brand = db.Column(db.String(50), nullable=False)
-    street  = db.Column(db.String(100), nullable=False)
+    street = db.Column(db.String(100), nullable=False)
     number = db.Column(db.String(20), nullable=False)
     district = db.Column(db.String(100), nullable=False)
     city = db.Column(db.String(100), nullable=False)
@@ -43,7 +53,7 @@ class Motorcycle(db.Model):
 
 class Client(db.Model):
     __tablename__ = 'clients'
-    id = db.Column(db.Integer, primary_key=True )
+    id = db.Column(db.Integer, primary_key=True)
     first_name = db.Column(db.String(100), nullable=False)
     last_name_1 = db.Column(db.String(100), nullable=False)
     last_name_2 = db.Column(db.String(100))
@@ -61,114 +71,208 @@ class Client(db.Model):
     def full_address(self):
         return f"{self.street} {self.number}, {self.district}, {self.city}, {self.state}"
 
-
 client_interests = db.Table('client_interests',
     db.Column('client_id', db.Integer, db.ForeignKey('clients.id'), primary_key=True),
     db.Column('motorcycle_id', db.Integer, db.ForeignKey('motorcycles.id'), primary_key=True)
 )
 
+# Modelos Swagger
+branch_model = api.model('Branch', {
+    'id': fields.Integer(readonly=True, description='ID único de la sucursal'),
+    'name': fields.String(required=True, description='Nombre de la sucursal'),
+    'brand': fields.String(required=True, description='Marca (KTM o YAMAHA)'),
+    'address': fields.String(readonly=True, description='Dirección completa')
+})
+
+motorcycle_model = api.model('Motorcycle', {
+    'id': fields.Integer(readonly=True, description='ID único de la motocicleta'),
+    'brand': fields.String(required=True, description='Marca de la motocicleta'),
+    'model': fields.String(required=True, description='Modelo de la motocicleta'),
+    'year': fields.Integer(required=True, description='Año del modelo'),
+    'branch': fields.String(description='Nombre de la sucursal')
+})
+
+client_input_model = api.model('ClientInput', {
+    'first_name': fields.String(required=True, description='Nombre'),
+    'last_name_1': fields.String(required=True, description='Primer apellido'),
+    'last_name_2': fields.String(description='Segundo apellido'),
+    'email': fields.String(required=True, description='Correo electrónico'),
+    'phone': fields.String(required=True, description='Teléfono'),
+    'birth_date': fields.Date(required=True, description='Fecha de nacimiento'),
+    'street': fields.String(required=True, description='Calle'),
+    'number': fields.String(required=True, description='Número'),
+    'district': fields.String(required=True, description='Colonia'),
+    'city': fields.String(required=True, description='Ciudad'),
+    'state': fields.String(required=True, description='Estado'),
+    'motorcycle_ids': fields.List(fields.Integer, description='IDs de motocicletas de interés')
+})
+
+address_input_model = api.model('AddressInput', {
+    'street': fields.String(required=True, description='Calle'),
+    'number': fields.String(required=True, description='Número'),
+    'district': fields.String(required=True, description='Colonia'),
+    'city': fields.String(required=True, description='Ciudad'),
+    'state': fields.String(required=True, description='Estado')
+})
+
+# Funciones auxiliares (las mismas que ya tenías)
 def get_coordinates(address):
-    "Get coordinates using OpenStreetMap Nominatim API"
     try:
         base_url = "https://nominatim.openstreetmap.org/search"
         params = {
             "q": address,
-            "format":"json",
-            "limit":1
+            "format": "json",
+            "limit": 1
         }
         headers = {
-            "User-Agent":"MotorcycleShopApp/1.0"
+            "User-Agent": "MotorcycleShopApp/1.0"
         }
-
         response = requests.get(base_url, params=params, headers=headers)
         data = response.json()
-
+        
         if data:
             return float(data[0]["lat"]), float(data[0]["lon"])
-        return None 
+        return None
     except Exception as e:
         print(f"Error getting coordinates: {e}")
         return None
 
 def calculate_distance(coord1, coord2):
-    """Calculate distance between two coordinates using Haversine formula"""
-    from math import radians, sin, cos, sqrt, atan2 
-
+    from math import radians, sin, cos, sqrt, atan2
+    
     lat1, lon1 = coord1
-    lat2, lon2 = coord2 
-
+    lat2, lon2 = coord2
+    
     R = 6371
-
+    
     lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
-
+    
     dlat = lat2 - lat1
-    dlon = lon2 - lon1 
-
+    dlon = lon2 - lon1
+    
     a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
     c = 2 * atan2(sqrt(a), sqrt(1-a))
-    distance = R*c
-
+    distance = R * c
+    
     return distance
 
-# Routes
-@app.route('/branches', methods=['GET'])
-def get_branches():
-    branches = Branch.query.all()
-    return jsonify([{
-        'id': b.id,
-        'name': b.name,
-        'brand': b.brand
-    } for b in branches])
+# Endpoints
+@ns_branches.route('/')
+class BranchList(Resource):
+    @ns_branches.doc('list_branches')
+    @ns_branches.marshal_list_with(branch_model)
+    def get(self):
+        """Lista todas las sucursales"""
+        branches = Branch.query.all()
+        return [{
+            'id': b.id,
+            'name': b.name,
+            'brand': b.brand,
+            'address': b.full_address
+        } for b in branches]
 
-@app.route('/motorcycles', methods=['GET'])
-def get_motorcycles():
-    motorcycles = Motorcycle.query.all()
-    return jsonify([{
-        'id': m.id,
-        'brand': m.brand,
-        'model': m.model,
-        'year': m.year,
-        'branch': m.branch.name
-    } for m in motorcycles])
+@ns_motorcycles.route('/')
+class MotorcycleList(Resource):
+    @ns_motorcycles.doc('list_motorcycles')
+    @ns_motorcycles.marshal_list_with(motorcycle_model)
+    def get(self):
+        """Lista todas las motocicletas"""
+        motorcycles = Motorcycle.query.all()
+        return [{
+            'id': m.id,
+            'brand': m.brand,
+            'model': m.model,
+            'year': m.year,
+            'branch': m.branch.name
+        } for m in motorcycles]
 
-@app.route('/motorcycles/<int:branch_id>', methods=['GET'])
-def get_branch_motorcycles(branch_id):
-    motorcycles = Motorcycle.query.filter_by(branch_id=branch_id).all()
-    return jsonify([{
-        'id': m.id,
-        'brand': m.brand,
-        'model': m.model,
-        'year': m.year
-    } for m in motorcycles])
+@ns_motorcycles.route('/<int:branch_id>')
+class BranchMotorcycles(Resource):
+    @ns_motorcycles.doc('get_branch_motorcycles')
+    @ns_motorcycles.marshal_list_with(motorcycle_model)
+    def get(self, branch_id):
+        """Lista las motocicletas de una sucursal específica"""
+        motorcycles = Motorcycle.query.filter_by(branch_id=branch_id).all()
+        return [{
+            'id': m.id,
+            'brand': m.brand,
+            'model': m.model,
+            'year': m.year
+        } for m in motorcycles]
 
-@app.route('/client', methods=['POST'])
-def create_client():
-    data = request.json
-    try:
-        client = Client(
-            first_name=data['first_name'],
-            last_name_1=data['last_name_1'],
-            last_name_2=data.get('last_name_2'),
-            email=data['email'],
-            phone=data['phone'],
-            birth_date=datetime.strptime(data['birth_date'], '%Y-%m-%d').date(),
-            street=data['street'],
-            number=data['number'],
-            district=data['district'],
-            city=data['city'],
-            state=data['state']
-        )
+@ns_clients.route('/')
+class ClientAPI(Resource):
+    @ns_clients.doc('create_client')
+    @ns_clients.expect(client_input_model)
+    def post(self):
+        """Crea un nuevo cliente"""
+        data = request.json
+        try:
+            client = Client(
+                first_name=data['first_name'],
+                last_name_1=data['last_name_1'],
+                last_name_2=data.get('last_name_2'),
+                email=data['email'],
+                phone=data['phone'],
+                birth_date=datetime.strptime(data['birth_date'], '%Y-%m-%d').date(),
+                street=data['street'],
+                number=data['number'],
+                district=data['district'],
+                city=data['city'],
+                state=data['state']
+            )
 
-        if 'motorcycle_ids' in data:
-            motorcycles = Motorcycle.query.filter(Motorcycle.id.in_(data['motorcycle_ids'])).all()
-            client.interests.extend(motorcycles)
+            if 'motorcycle_ids' in data:
+                motorcycles = Motorcycle.query.filter(Motorcycle.id.in_(data['motorcycle_ids'])).all()
+                client.interests.extend(motorcycles)
 
-        db.session.add(client)
-        db.session.commit()
+            db.session.add(client)
+            db.session.commit()
 
-        #Find nereast branch
-        client_coords = get_coordinates(client.full_address)
-        if client_coords:
+            client_coords = get_coordinates(client.full_address)
+            if client_coords:
+                branches = Branch.query.all()
+                nearest_branch = None
+                min_distance = float('inf')
+
+                for branch in branches:
+                    branch_coords = get_coordinates(branch.full_address)
+                    if branch_coords:
+                        distance = calculate_distance(client_coords, branch_coords)
+                        if distance < min_distance:
+                            min_distance = distance
+                            nearest_branch = branch
+
+                if nearest_branch:
+                    return {
+                        'message': 'Client created successfully',
+                        'client_id': client.id,
+                        'nearest_branch': {
+                            'id': nearest_branch.id,
+                            'name': nearest_branch.name,
+                            'address': nearest_branch.full_address,
+                            'distance_km': round(min_distance, 2)
+                        }
+                    }
+
+        except Exception as e:
+            db.session.rollback()
+            api.abort(400, str(e))
+
+@ns_recommend.route('/branch')
+class RecommendBranch(Resource):
+    @ns_recommend.doc('recommend_branch')
+    @ns_recommend.expect(address_input_model)
+    def post(self):
+        """Recomienda la sucursal más cercana basada en una dirección"""
+        data = request.json
+        try:
+            client_address = f"{data['street']} {data['number']}, {data['district']}, {data['city']}, {data['state']}"
+            client_coords = get_coordinates(client_address)
+
+            if not client_coords:
+                api.abort(400, 'No se pudieron obtener las coordenadas del domicilio')
+
             branches = Branch.query.all()
             nearest_branch = None
             min_distance = float('inf')
@@ -176,97 +280,33 @@ def create_client():
             for branch in branches:
                 branch_coords = get_coordinates(branch.full_address)
                 if branch_coords:
-                    distance = calculate_distance(client_coords,branch_coords)
-                    if(distance < min_distance):
+                    distance = calculate_distance(client_coords, branch_coords)
+                    if distance < min_distance:
                         min_distance = distance
-                        nearest_branch = branch
-            
+                        nearest_branch = {
+                            'branch': branch,
+                            'lat': branch_coords[0],
+                            'lng': branch_coords[1]
+                        }
+
             if nearest_branch:
-                return jsonify({
-                    'message': 'Client created successfully',
-                    'client_id': client.id,
+                return {
                     'nearest_branch': {
-                        'id': nearest_branch.id,
-                        'name': nearest_branch.name,
-                        'address': nearest_branch.full_address,
-                        'distance_km': round(min_distance, 2)
-                    }
-                })
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 400 
-    
-@app.route('/clients', methods=['GET'])
-def get_clients():
-    clients = Client.query.all()
-    return jsonify([{
-        'id': c.id,
-        'first_name': c.first_name,
-        'last_name_1': c.last_name_1,
-        'last_name_2': c.last_name_2,
-        'email': c.email,
-        'interests': [{
-            'id': m.id,
-            'brand': m.brand,
-            'model': m.model
-        } for m in c.interests]
-    } for c in clients])
-
-@app.route('/health', methods=['GET'])
-def health():
-    return jsonify({
-        'status': 'healthy',
-        'message': 'API is working correctly'
-    }), 200
-
-@app.route('/recommend-branch', methods=['POST'])
-def recommend_branch():
-    data = request.json
-    try:
-        # Obtener las coordenadas del domicilio del cliente
-        client_address = f"{data['street']} {data['number']}, {data['district']}, {data['city']}, {data['state']}"
-        client_coords = get_coordinates(client_address)
-
-        if not client_coords:
-            return jsonify({'error': 'No se pudieron obtener las coordenadas del domicilio'}), 400
-
-        # Obtener todas las sucursales
-        branches = Branch.query.all()
-        nearest_branch = None
-        min_distance = float('inf')
-
-        # Calcular la sucursal más cercana
-        for branch in branches:
-            branch_coords = get_coordinates(branch.full_address)
-            if branch_coords:
-                distance = calculate_distance(client_coords, branch_coords)
-                if distance < min_distance:
-                    min_distance = distance
-                    nearest_branch = {
-                        'branch':branch,
-                        'lat': branch_coords[0],
-                        'lng': branch_coords[1]
-                    }
-
-        if nearest_branch:
-            return jsonify({
-                'nearest_branch': {
-                    'id': nearest_branch["branch"].id,
-                    'name': nearest_branch["branch"].name,
-                    'address': nearest_branch["branch"].full_address,
-                    'distance_km': round(min_distance, 2),
-                    'location': {
-                        'lat': nearest_branch['lat'],
-                        'lng': nearest_branch['lng']
+                        'id': nearest_branch['branch'].id,
+                        'name': nearest_branch['branch'].name,
+                        'address': nearest_branch['branch'].full_address,
+                        'distance_km': round(min_distance, 2),
+                        'location': {
+                            'lat': nearest_branch['lat'],
+                            'lng': nearest_branch['lng']
+                        }
                     }
                 }
-            })
-        else:
-            return jsonify({'error': 'No se encontró una sucursal cercana'}), 404
+            else:
+                api.abort(404, 'No se encontró una sucursal cercana')
 
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        except Exception as e:
+            api.abort(400, str(e))
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=4200)
