@@ -27,6 +27,21 @@ services:
     networks:
       - motorcycle_network
 
+  test:
+    build: 
+      context: .
+      dockerfile: Dockerfile.test
+    command: pytest
+    volumes:
+      - .:/app
+    environment:
+      - DATABASE_URL=postgresql://admin:admin123@db:5432/motorcycle_shop
+      - PYTHONPATH=/app
+    depends_on:
+      - db
+    networks:
+      - motorcycle_network
+
 networks:
   motorcycle_network:
     driver: bridge
