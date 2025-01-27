@@ -6,7 +6,13 @@ import requests
 from datetime import datetime
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={
+    r"/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"]
+    }
+})
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
 db = SQLAlchemy(app)
 
@@ -207,9 +213,12 @@ def get_clients():
         } for m in c.interests]
     } for c in clients])
 
-@app.route('health',methods=['GET'])
+@app.route('/health', methods=['GET'])
 def health():
-    return jsonify({'helath':'it´s working'}), 200
+    return jsonify({
+        'status': 'healthy',
+        'message': 'API is working correctly'
+    }), 200
 
 @app.route('/recommend-branch', methods=['POST'])
 def recommend_branch():
