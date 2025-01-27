@@ -4,7 +4,7 @@ services:
   api:
     build: ./api
     ports:
-      - "4200:5000"
+      - "4200:4200"
     environment:
       - DATABASE_URL=postgresql://admin:admin123@db:5432/motorcycle_shop
     depends_on:
