@@ -39,19 +39,19 @@ jobs:
         fi
 
     - name: Create SSH config
-          run: |
-            mkdir -p ~/.ssh
-            echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key.pem
-            chmod 600 ~/.ssh/deploy_key.pem
-            # Verificar el formato de la clave
-            echo "First line of key file:"
-            head -n 1 ~/.ssh/deploy_key.pem
-            echo "Last line of key file:"
-            tail -n 1 ~/.ssh/deploy_key.pem
-            echo "Key file permissions:"
-            ls -la ~/.ssh/deploy_key.pem
-            echo "Key file format:"
-            ssh-keygen -l -f ~/.ssh/deploy_key.pem || echo "Invalid key format"
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key.pem
+        chmod 600 ~/.ssh/deploy_key.pem
+        ls -la ~/.ssh/deploy_key.pem
+        echo "First line of key file:"
+        head -n 1 ~/.ssh/deploy_key.pem
+        echo "Last line of key file:"
+        tail -n 1 ~/.ssh/deploy_key.pem
+        echo "Key file permissions:"
+        ls -la ~/.ssh/deploy_key.pem
+        echo "Key file format:"
+        ssh-keygen -l -f ~/.ssh/deploy_key.pem || echo "Invalid key format"
 
     - name: Test SSH connection
       run: |
