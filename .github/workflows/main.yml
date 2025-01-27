@@ -30,29 +30,36 @@ jobs:
         echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key.pem
         chmod 600 ~/.ssh/deploy_key.pem
 
-    - name: Test SSH connection
+    - name: Prepare EC2 instance
       env:
         EC2_HOST: ${{ secrets.EC2_HOST }}
       run: |
-        echo "Testing SSH connection..."
-        ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key.pem ubuntu@$EC2_HOST 'echo "SSH connection successful"'
+        # Crear directorio y establecer permisos
+        ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key.pem ubuntu@$EC2_HOST '
+          mkdir -p ~/motorcycle-shop &&
+          sudo apt-get update &&
+          sudo apt-get install -y docker.io docker-compose &&
+          sudo usermod -aG docker ubuntu
+        '
 
     - name: Deploy to EC2
       env:
         EC2_HOST: ${{ secrets.EC2_HOST }}
       run: |
-        # Detener contenedores existentes
-        ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key.pem ubuntu@$EC2_HOST '
-          cd ~/motorcycle-shop &&
-          docker-compose down
-        '
-        
-        # Copiar archivos nuevos
+        # Copiar archivos nuevos primero
+        echo "Copying files..."
         scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key.pem -r ./* ubuntu@$EC2_HOST:~/motorcycle-shop/
         
-        # Reiniciar contenedores
+        # Luego manejar los contenedores
+        echo "Managing containers..."
         ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key.pem ubuntu@$EC2_HOST '
           cd ~/motorcycle-shop &&
-          docker-compose build --no-cache &&
-          docker-compose up -d
+          if [ -f "docker-compose.yml" ]; then
+            docker-compose down || true
+            docker-compose build --no-cache &&
+            docker-compose up -d
+          else
+            echo "docker-compose.yml not found"
+            ls -la
+          fi
         '
