@@ -24,13 +24,16 @@ jobs:
         python-version: '3.11'
 
     - name: Install dependencies and run tests
+      env:
+        SQLALCHEMY_DATABASE_URI: 'sqlite:///:memory:'
+        TESTING: 'True'
       run: |
         cd api
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pytest pytest-cov
         cd ..
-        python -m pytest
+        PYTHONPATH=$PYTHONPATH:$(pwd) python -m pytest
 
     - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v2 
